@@ -1,0 +1,19 @@
+# grpcmon example configuration
+# Copy this file and adjust for your environment.
+
+targets:
+  # Minimal: only address is required.
+  - address: localhost:50051
+
+  # Full example with all options.
+  - name: payments-service
+    address: payments.internal:50051
+    interval: 10s   # how often to probe (default: 5s)
+    timeout: 3s     # per-probe deadline  (default: 2s)
+    tls: true       # use TLS when dialing
+
+  - name: auth-service
+    address: auth.internal:50052
+    interval: 5s
+    timeout: 2s
+    tls: false
