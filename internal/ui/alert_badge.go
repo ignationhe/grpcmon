@@ -4,49 +4,61 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/user/grpcmon/internal/probe"
+	"github.com/rivo/tview"
+	"grpcmon/internal/probe"
 )
 
-// AlertBadge renders a compact alert summary line for the dashboard.
+// AlertBadge is a tview component that displays active probe alerts.
 type AlertBadge struct {
-	alerts []probe.Alert
+	TextView *tview.TextView
 }
 
-// NewAlertBadge creates an AlertBadge.
+// NewAlertBadge creates and returns a new AlertBadge with default styling.
 func NewAlertBadge() *AlertBadge {
-	return &AlertBadge{}
+	tv := tview.NewTextView()
+	tv.SetDynamicColors(true)
+	tv.SetBorder(true)
+	tv.SetTitle(" ⚠ Alerts ")
+	tv.SetTitleAlign(tview.AlignLeft)
+
+	b := &AlertBadge{TextView: tv}
+	b.Update(nil)
+	return b
 }
 
-// Update replaces the current set of alerts.
+// Update refreshes the badge content with the provided list of active alerts.
 func (b *AlertBadge) Update(alerts []probe.Alert) {
-	b.alerts = alerts
-}
+	b.TextView.Clear()
 
-// Render returns a single-line string summarising active alerts.
-// Critical alerts are prefixed with [CRIT], warnings with [WARN].
-func (b *AlertBadge) Render() string {
-	if len(b.alerts) == 0 {
-		return "  ✓ All targets healthy"
+	if len(alerts) == 0 {
+		fmt.Fprint(b.TextView, "[green]No active alerts[-]")
+		return
 	}
 
-	var parts []string
-	crit, warn := 0, 0
-	for _, a := range b.alerts {
-		switch a.Level {
-		case probe.AlertCritical:
-			crit++
-			parts = append(parts, fmt.Sprintf("[CRIT] %s: %s", a.Target, a.Message))
-		case probe.AlertWarning:
-			warn++
-			parts = append(parts, fmt.Sprintf("[WARN] %s: %s", a.Target, a.Message))
+	var sb strings.Builder
+	for i, a := range alerts {
+		if i > 0 {
+			sb.WriteString("\n")
 		}
+		severityColor := severityColor(a.Severity)
+		sb.WriteString(fmt.Sprintf(
+			"[%s]%-20s[-] %s  [grey]%s[-]",
+			severityColor,
+			a.Target,
+			a.Message,
+			a.FiredAt.Format("15:04:05"),
+		))
 	}
-
-	header := fmt.Sprintf("  Alerts — %d critical, %d warning", crit, warn)
-	return header + "\n  " + strings.Join(parts, "  |  ")
+	fmt.Fprint(b.TextView, sb.String())
 }
 
-// ActiveCount returns the number of non-None alerts.
-func (b *AlertBadge) ActiveCount() int {
-	return len(b.alerts)
+func severityColor(s probe.Severity) string {
+	switch s {
+	case probe.SeverityCritical:
+		return "red"
+	case probe.SeverityWarning:
+		return "yellow"
+	default:
+		return "white"
+	}
 }
