@@ -4,74 +4,75 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/lmittmann/grpcmon/internal/config"
 )
 
-// SchedulerConfig holds configuration for the probe scheduler.
-type SchedulerConfig struct {
-	Interval time.Duration
-	Targets  []string
-}
-
-// Scheduler runs probes against a set of targets at a fixed interval,
-// feeding results into an Aggregator.
+// Scheduler drives periodic health-check probes for all configured targets.
+// It uses a RateLimiter to prevent bursts and an Aggregator to store results.
 type Scheduler struct {
-	cfg        SchedulerConfig
-	probe      *Probe
-	aggregator *Aggregator
-	stopOnce   sync.Once
-	stopCh     chan struct{}
+	cfg         *config.Config
+	probe       *Probe
+	aggregator  *Aggregator
+	rateLimiter *RateLimiter
+	wg          sync.WaitGroup
+	cancel      context.CancelFunc
 }
 
-// NewScheduler creates a Scheduler that will poll cfg.Targets every cfg.Interval.
-func NewScheduler(cfg SchedulerConfig, p *Probe, agg *Aggregator) *Scheduler {
+// NewScheduler creates a Scheduler wired to the provided Probe and Aggregator.
+func NewScheduler(cfg *config.Config, p *Probe, agg *Aggregator) *Scheduler {
+	minDelay := time.Duration(cfg.PollInterval) / 2
+	if minDelay < 100*time.Millisecond {
+		minDelay = 100 * time.Millisecond
+	}
 	return &Scheduler{
-		cfg:        cfg,
-		probe:      p,
-		aggregator: agg,
-		stopCh:     make(chan struct{}),
+		cfg:         cfg,
+		probe:       p,
+		aggregator:  agg,
+		rateLimiter: NewRateLimiter(minDelay),
 	}
 }
 
-// Start begins polling in the background. It returns immediately.
-// Cancel ctx or call Stop to halt the scheduler.
+// Start launches background goroutines that poll each target at the configured
+// interval. It is safe to call Start only once.
 func (s *Scheduler) Start(ctx context.Context) {
-	go s.run(ctx)
+	ctx, s.cancel = context.WithCancel(ctx)
+	for _, t := range s.cfg.Targets {
+		target := t
+		s.wg.Add(1)
+		go s.runTarget(ctx, target)
+	}
 }
 
-// Stop signals the scheduler to cease polling.
+// Stop signals all polling goroutines to exit and waits for them to finish.
 func (s *Scheduler) Stop() {
-	s.stopOnce.Do(func() {
-		close(s.stopCh)
-	})
+	if s.cancel != nil {
+		s.cancel()
+	}
+	s.wg.Wait()
 }
 
-func (s *Scheduler) run(ctx context.Context) {
-	s.poll(ctx)
-
-	ticker := time.NewTicker(s.cfg.Interval)
+func (s *Scheduler) runTarget(ctx context.Context, target config.Target) {
+	defer s.wg.Done()
+	ticker := time.NewTicker(time.Duration(s.cfg.PollInterval))
 	defer ticker.Stop()
+
+	s.poll(ctx, target)
 
 	for {
 		select {
 		case <-ticker.C:
-			s.poll(ctx)
-		case <-s.stopCh:
-			return
+			s.poll(ctx, target)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (s *Scheduler) poll(ctx context.Context) {
-	var wg sync.WaitGroup
-	for _, target := range s.cfg.Targets {
-		wg.Add(1)
-		go func(t string) {
-			defer wg.Done()
-			result := s.probe.Check(ctx, t)
-			s.aggregator.Record(t, result)
-		}(target)
+func (s *Scheduler) poll(ctx context.Context, target config.Target) {
+	if err := s.rateLimiter.Wait(ctx, target.Address); err != nil {
+		return
 	}
-	wg.Wait()
+	result := s.probe.Check(ctx, target)
+	s.aggregator.Record(target.Address, result)
 }
