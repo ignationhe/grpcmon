@@ -71,3 +71,14 @@ func TestLatencyGraph_Title(t *testing.T) {
 		t.Fatalf("expected title to contain %q, got %q", target, title)
 	}
 }
+
+func TestLatencyGraph_Update_SingleEntry(t *testing.T) {
+	g := NewLatencyGraph("svc")
+	latencies := []time.Duration{42 * time.Millisecond}
+	g.Update(latencies)
+	txt := g.view.GetText(false)
+	// With a single entry, avg equals that entry.
+	if !strings.Contains(txt, "42.0ms") {
+		t.Fatalf("expected avg 42.0ms in output, got: %q", txt)
+	}
+}
