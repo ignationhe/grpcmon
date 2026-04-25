@@ -84,3 +84,14 @@ func TestDefaultAlertPolicy_Values(t *testing.T) {
 		t.Error("latency warning should be less than critical")
 	}
 }
+
+// TestEvaluate_EmptyHistory verifies that evaluating an empty history
+// produces no alert rather than panicking or returning a spurious result.
+func TestEvaluate_EmptyHistory(t *testing.T) {
+	h := makeHistory([]Result{})
+	p := DefaultAlertPolicy()
+	alert := p.Evaluate("svc", h)
+	if alert.Level != AlertNone {
+		t.Fatalf("expected no alert for empty history, got level %d: %s", alert.Level, alert.Message)
+	}
+}
