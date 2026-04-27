@@ -53,3 +53,19 @@ func (d *Deduplicator) ResetAll() {
 	defer d.mu.Unlock()
 	d.last = make(map[string]time.Time)
 }
+
+// ActiveTargets returns the number of targets currently tracked within
+// the cooldown window. Targets whose cooldown has expired are not counted.
+func (d *Deduplicator) ActiveTargets() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	now := d.now()
+	count := 0
+	for _, t := range d.last {
+		if now.Sub(t) < d.cooldown {
+			count++
+		}
+	}
+	return count
+}
