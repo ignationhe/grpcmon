@@ -94,3 +94,35 @@ func TestScheduler_ContextCancellation(t *testing.T) {
 		t.Fatal("expected at least one result before cancellation")
 	}
 }
+
+func TestScheduler_MultipleTargets(t *testing.T) {
+	srv1 := startHealthServer(t, true)
+	srv2 := startHealthServer(t, true)
+
+	p := probe.New(probe.Config{Timeout: time.Second})
+	agg := probe.NewAggregator()
+
+	cfg := probe.SchedulerConfig{
+		Interval: 50 * time.Millisecond,
+		Targets:  []string{srv1, srv2},
+	}
+
+	sched := probe.NewScheduler(cfg, p, agg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sched.Start(ctx)
+	time.Sleep(120 * time.Millisecond)
+	sched.Stop()
+
+	for _, target := range []string{srv1, srv2} {
+		result, ok := agg.Latest(target)
+		if !ok {
+			t.Errorf("expected a recorded result for target %s", target)
+			continue
+		}
+		if result.Error != nil {
+			t.Errorf("unexpected error for target %s: %v", target, result.Error)
+		}
+	}
+}
