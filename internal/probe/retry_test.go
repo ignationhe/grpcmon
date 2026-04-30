@@ -65,6 +65,10 @@ func TestWithRetry_AllAttemptsFail(t *testing.T) {
 	if calls != 3 {
 		t.Errorf("expected 3 calls, got %d", calls)
 	}
+	// Ensure the returned error is the original probe error, not a wrapped one.
+	if !errors.Is(res.Error, errFail) {
+		t.Errorf("expected error to wrap errFail, got %v", res.Error)
+	}
 }
 
 func TestWithRetry_ContextCancelled(t *testing.T) {
@@ -86,6 +90,25 @@ func TestWithRetry_ContextCancelled(t *testing.T) {
 	// Should have run first attempt, then bailed on delay for second.
 	if calls > 2 {
 		t.Errorf("expected at most 2 calls with cancelled context, got %d", calls)
+	}
+}
+
+func TestWithRetry_MaxAttemptsZero(t *testing.T) {
+	var calls int32
+	fn := func(_ context.Context) Result {
+		atomic.AddInt32(&calls, 1)
+		return Result{Target: "svc", Error: errors.New("fail")}
+	}
+
+	// A policy with MaxAttempts=0 should make no calls and return an error.
+	policy := RetryPolicy{MaxAttempts: 0, Delay: 5 * time.Millisecond}
+	res := WithRetry(context.Background(), policy, fn)
+
+	if res.Error == nil {
+		t.Fatal("expected error when MaxAttempts=0")
+	}
+	if calls != 0 {
+		t.Errorf("expected 0 calls when MaxAttempts=0, got %d", calls)
 	}
 }
 
