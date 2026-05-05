@@ -93,3 +93,19 @@ func TestThrottle_Reset_AllowsImmediateReacquire(t *testing.T) {
 	}
 	p.Release()
 }
+
+func TestThrottle_InflightDecreasesOnRelease(t *testing.T) {
+	p := NewThrottlePolicy(4, 0)
+
+	if !p.Acquire("host:50051") {
+		t.Fatal("first acquire should succeed")
+	}
+	if p.Inflight() != 1 {
+		t.Fatalf("expected 1 inflight after acquire, got %d", p.Inflight())
+	}
+
+	p.Release()
+	if p.Inflight() != 0 {
+		t.Fatalf("expected 0 inflight after release, got %d", p.Inflight())
+	}
+}
