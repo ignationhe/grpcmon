@@ -49,6 +49,25 @@ func (p *RegionPanel) Refresh() {
 	p.view.SetText(sb.String())
 }
 
+// WorstRegion returns the region name with the highest error rate, or an empty
+// string if no regions are available. It can be used to drive alerts or
+// auto-scroll focus to the most degraded region.
+func (p *RegionPanel) WorstRegion() string {
+	regions := p.store.Regions()
+	if len(regions) == 0 {
+		return ""
+	}
+	worst := regions[0]
+	worstRate := p.store.Summarise(worst, p.agg).ErrorRate
+	for _, reg := range regions[1:] {
+		if rate := p.store.Summarise(reg, p.agg).ErrorRate; rate > worstRate {
+			worst = reg
+			worstRate = rate
+		}
+	}
+	return worst
+}
+
 func regionColor(rate float64) string {
 	switch {
 	case rate == 0:
