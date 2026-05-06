@@ -64,17 +64,25 @@ func (p *Poller) poll(ctx context.Context, cfg PollConfig) {
 	ticker := time.NewTicker(cfg.Interval)
 	defer ticker.Stop()
 
+	// Run an immediate check before waiting for the first tick so that
+	// results are available as soon as polling starts.
+	p.send(prober.Check(ctx, cfg.Service))
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			result := prober.Check(ctx, cfg.Service)
-			select {
-			case p.out <- result:
-			default:
-				// drop if consumer is slow
-			}
+			p.send(prober.Check(ctx, cfg.Service))
 		}
+	}
+}
+
+// send writes a Result to the output channel, dropping it if the consumer is slow.
+func (p *Poller) send(result Result) {
+	select {
+	case p.out <- result:
+	default:
+		// drop if consumer is slow
 	}
 }
