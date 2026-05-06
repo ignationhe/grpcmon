@@ -92,3 +92,18 @@ func TestCooldownPolicy_RecordFailure_Idempotent(t *testing.T) {
 		t.Fatal("expected cooldown to still be active")
 	}
 }
+
+func TestCooldownPolicy_RecordFailure_RefreshesCooldown(t *testing.T) {
+	// A second RecordFailure near the end of the window should push the
+	// expiry forward, keeping the target in cooldown.
+	cp := NewCooldownPolicy(50 * time.Millisecond)
+	cp.RecordFailure("svc:443")
+	time.Sleep(30 * time.Millisecond)
+	// Refresh the cooldown before it expires.
+	cp.RecordFailure("svc:443")
+	time.Sleep(30 * time.Millisecond)
+	// Without refresh the original window would have expired by now.
+	if !cp.InCooldown("svc:443") {
+		t.Fatal("expected cooldown to be refreshed by second RecordFailure")
+	}
+}
