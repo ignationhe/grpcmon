@@ -76,3 +76,19 @@ func TestCooldownPolicy_Reset_RemovesFromTargets(t *testing.T) {
 		t.Fatal("expected no targets after Reset")
 	}
 }
+
+func TestCooldownPolicy_RecordFailure_Idempotent(t *testing.T) {
+	// Recording multiple failures for the same target should not create
+	// duplicate entries and should refresh the cooldown window.
+	cp := NewCooldownPolicy(5 * time.Second)
+	cp.RecordFailure("svc:443")
+	cp.RecordFailure("svc:443")
+	cp.RecordFailure("svc:443")
+	targets := cp.Targets()
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target after repeated failures, got %d", len(targets))
+	}
+	if !cp.InCooldown("svc:443") {
+		t.Fatal("expected cooldown to still be active")
+	}
+}
