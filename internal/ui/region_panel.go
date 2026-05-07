@@ -68,6 +68,24 @@ func (p *RegionPanel) WorstRegion() string {
 	return worst
 }
 
+// HealthyCount returns the total number of healthy endpoints across all regions.
+func (p *RegionPanel) HealthyCount() int {
+	total := 0
+	for _, reg := range p.store.Regions() {
+		total += p.store.Summarise(reg, p.agg).Healthy
+	}
+	return total
+}
+
+// UnhealthyCount returns the total number of unhealthy endpoints across all regions.
+func (p *RegionPanel) UnhealthyCount() int {
+	total := 0
+	for _, reg := range p.store.Regions() {
+		total += p.store.Summarise(reg, p.agg).Unhealthy
+	}
+	return total
+}
+
 func regionColor(rate float64) string {
 	switch {
 	case rate == 0:
